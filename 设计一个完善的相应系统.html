@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>设计一个完善的相应系统</title>
+</head>
+<body>
+  <div>
+    完善的响应式系统:
+    <span class="div1"></span>
+  </div>
+</body>
+<script>
+  // 从上一个我们可以看出,我们在进行绑定副作用函数的时候我们进行的是硬编码也就是相当于我们知道副作用函数是谁
+  // 但是现实情况是我们不可能去查找具体是哪些副作用函数影响了某一个具体的值
+  // 我们预期的目的是,哪怕这个副作用函数是匿名函数我们也一样能够把他添加到容器内set
+  // 首先创建容器储存副作用函数
+  const bucket = new Set()
+  // 需要代理的原始数据
+  const data = {text: "你好世界"}
+  // 没有用只是为了迷惑用的数据
+  const data2 = {text: "这是迷惑用的"}
+  // 代理数据
+  const obj = new Proxy(data, {
+    get(target,key){
+      console.log(`捕获到对象获取${key}属性的操作`)
+      // 将副作用函数存放到容器,这里不同于之前的直接add,这里我们要在全局里面声明一个变量用于存储注册的副作用函数
+      // 我们判断activeEffect是不是有值,如果有值就说明注册了副作用函数
+      if(activeEffect){
+        bucket.add(activeEffect)
+      }
+      // 返回数据
+      return target[key]
+    },
+    set(target,key,newVal){
+      console.log(`捕获到设置对象${key}属性的操作,其新值是${newVal}`)
+      // 设置新值
+      target[key] = newVal
+      // 执行副作用函数
+      bucket.forEach(fn => fn())
+      // 返回true代表成功
+      return true
+    }
+  })
+  let activeEffect = undefined
+  // 用于注册副作用函数
+  function effect(fn) {
+    // 用一个全局变量记录这个副作用函数
+    activeEffect = fn
+    // 并且执行函数
+    fn()
+  }
+  // 注册并执行副作用函数
+  effect(() =>{
+    // 记录副作用函数执行的次数
+    console.log("effect run") // 会执行两次,因为我们并没有把副作用函数和被操作字段之间建立任何关系也就是说,
+    // 只要设置值就会触发副作用函数,所以我们使用set作为容器并不是很合适
+    document.querySelector('.div1').innerHTML = obj.text
+  })
+  setTimeout(() => {
+    // 修改代理不存在对象的值
+    obj.noExit = "hello"
+    console.log(bucket)
+  },1000)
+</script>
+</html>

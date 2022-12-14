@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>响应式数据与副作用函数</title>
+</head>
+<body>
+  <div>
+    不是响应式的:
+    <span class="div1"></span>
+  </div>
+  <div>
+    响应式数据:
+    <span class="div2"></span>
+  </div>
+</body>
+<script>
+  // 所谓副作用函数就是说函数的执行直接或者间接影响到其他函数的执行
+  function addWorldld(world) {
+    document.querySelector('.div1').innerHTML = world
+  }
+  addWorldld("hello world")
+  // 响应式数据
+  let obj = {text:'hello world'}
+  function addTheWorld(){
+    document.querySelector('.div1').innerHTML = obj.text
+  }
+  obj.text = '你好世界'
+  // 就是说当副作用函数执行的时候会导致body的innerhtml发生变化，响应式就是说当
+  // obj对象的text发生变化的时候希望副作用函数执行
+  // 如果可以实现当值变化时执行副作用函数,那么我们就称obj是响应式数据
+  // 那么如果说可以监听到obj对象的取值和赋值的操作那么一切就迎刃而解
+  // 当我们取值的时候我们用一个容器把副作用函数装起来,当设置obj.text的时候我们就执行改副作用函数
+  // 在vue2中我们使用Object.defineProperty来实现,但是在es6语法中我们可以通过Proxy来实现
+  // Proxy是es6中新增的一个api,可以用来监听对象的取值和赋值操作
+  // 1.首先我们需要创建一个容器用来保存我们副作用函数,因为有可能会有多个副作用函数影响对象的值,所以我们使用set
+  const bucket = new Set()
+  // 需要被代理的数据
+  const data = {text:"你好世界"}
+  // 对原始数据的代理
+  const objData = new Proxy(data, {
+    // 拦截读取操作
+    get(target,key){
+      console.log(`捕获到对象获取${key}属性的值操作`);
+      // 当我们读取objData.text的时候会触发get方法,我们需要把副作用函数装起来
+      bucket.add(effect)
+      // 返回原始数据
+      return target[key]
+    },
+    set(target,key,newVal){
+      console.log(`捕获到对象设置${key}属性的值操作,新值为${newVal}`);
+      // 设置属性值
+      target[key] = newVal
+      // 执行副作用函数
+      bucket.forEach(fn => fn())
+      // 返回true表示成功
+      return true
+    }
+  })
+  // 副作用函数
+  function effect(){
+    document.querySelector('.div2').innerHTML = objData.text
+  }
+  // 第一次执行副作用函数
+  effect()
+  // 延时修改data的值
+  setTimeout(() => {
+    objData.text = "hello vue3"
+    console.log(data)
+  },1000)
+  // 查看console面板发现基本符合预期,但是问题也很明显我们不可能在开发过程中指定绑定哪一个副作用函数
+</script>
+</html>
