@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>分支切换和clearup</title>
+</head>
+<body>
+  <div>
+    分支切换和clearup:
+    <span class="div1"></span>
+  </div>
+</body>
+<script>
+  // 在我们之前设计的响应式系统中，其实并不合理，
+  // 也就是假如我们同时有两个变量触发副作用函数
+  // 比如 如下这个三元运算
+  // const data = {ok: true,text:"hello"}
+  // const obj = new Proxy(data, .../巴拉巴拉/..)
+  // effect(function effectFn(){
+  //   document.querySelector(".div1").innerHTML = obj.ok ? obj.text : 'not'
+  // })
+  // 在上面这个副作用函数中就会出现一种情况，副作用函数开始执行的时候
+  // 那么这个时候就会读取obj.ok的值由于此时obj.ok = true也会读取obj.text的值，所以就相当于
+  // 在他们两个key值分别对应的set会分别存储一个副作用函数（到这里也没有什么问题）
+  // 问题在于当之后我们把obj.ok的值设置为false之后，此时document.querySelector(".div1").innerHTML
+  // 的值永远都是“not” 不论obj.text的值如何变化，都没有必要再去执行副作用函数进行更新操作
+  // 但是实际上 我们这个不完善的响应式系统还是会在obj.text变化时不断执行副作用函数
+
+  // 那么最简单的方法就是当我们执行副作用函数的时候，我们把与改副作用函数相关的set集合清除
+  // 之后再把key与副作用函数建立关系如下93行修改过的注册副作用函数
+  // 创建一个全局变量来存储副作用函数
+  let activeEffect = undefined
+  // 首先创建一个新的weakMap的容器来存储副作用函数
+  const bucket = new WeakMap()
+  // 创建一个需要代理的对象
+  const data = {text: 'hello world'}
+  // 封装track函数
+  function track(target, key){
+    // 如果activeEffect不存在，那么就直接return
+    if (!activeEffect) return
+    // 如果存在就根据target获取存储副作用函数的map
+    let depsMap = bucket.get(target)
+    // 如果depsMap不存在就新建一个
+    if(!depsMap){
+      depsMap = new Map()
+      bucket.set(target, depsMap)
+    }
+    // 如果说存在就根据key获取副作用函数的set
+    let deps = depsMap.get(key)
+    // 如果不存在就新建一个set
+    if(!deps){
+      deps = new Set()
+      depsMap.set(key, deps)
+    }
+    // 最后把副作用函数添加到set内
+    deps.add(activeEffect)
+    activeEffect.deps.push(deps)
+  }
+  // 封装trigger函数
+  function trigger(target,key){
+    // 首先根据target获取weakMap中的map
+    const depsMap = bucket.get(target)
+    // 不存在的话return
+    if(!depsMap) return
+    // 存在的话根据key获取set中的对应的副作用函数
+    const deps = depsMap.get(key)
+    // 这里为了避免陷入死循环
+    const rundeps = new Set(deps)
+    // 存在副作用函数的话就执行
+    if(rundeps){
+      rundeps.forEach(fn => {
+        fn()
+      })
+    }
+  }
+  // 创建一个代理对象
+  const obj = new Proxy(data, {
+    get(target,key){
+      console.log(`捕获到了get操作，key为${key}`)
+      // 首先调用track函数来收集副作用函数
+      track(target, key)
+      // 正常返回数据
+      return target[key]
+    },
+    set(target,key,newVal){
+      console.log(`捕获到了set操作，key为${key}，新值为${newVal}`)
+      // 首先设置新值
+      target[key] = newVal
+      // 调用trigger函数
+      trigger(target, key)
+    }
+  })
+  // 创建一个注册副作用函数的函数
+  function effect(fn){
+    const effectFn = () => {
+      // 调用clearup函数清除工作
+      clearup(effectFn)
+      activeEffect = effectFn
+      console.log("你猜猜看",effectFn === activeEffect)
+      fn()
+    }
+    effectFn.deps = []
+    effectFn()
+  }
+  // clearup函数
+  function clearup(effectFn) {
+    // 遍历effectFn.deps数组,里面保存的是再track记录的副作用函数
+    for (let index = 0; index < effectFn.deps.length; index++) {
+      // deps是依赖集合（不明白为啥不直接删除还非要复制一个）
+      const deps = effectFn.deps[index];
+      // 将effectFn从依赖项中移除
+      deps.delete(effectFn)
+    }
+    // 最后重置effectFn.deps 数组
+    effectFn.deps.length = 0
+  }
+  // 创建一个更新视图的函数
+  effect(() => {
+    document.querySelector('.div1').innerHTML = obj.text
+  })
+  // 创建一个更新数据的函数
+  setTimeout(() => {
+    obj.text = 'hello world 2'
+  }, 1000)
+</script>
+</html>
