@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>使用weakMap优化响应式系统</title>
+</head>
+<body>
+  <div>
+    使用weakMap优化响应式系统:
+    <span class="div1"></span>
+  </div>
+</body>
+<script>
+  // 创建一个全局变量来存储副作用函数
+  let activeEffect = undefined
+  // 首先创建一个新的weakMap的容器来存储副作用函数
+  const bucket = new WeakMap()
+  // 创建一个需要代理的对象
+  const data = {text: 'hello world'}
+  // 封装track函数
+  function track(target, key){
+    // 如果activeEffect不存在，那么就直接return
+    if (!activeEffect) return
+    // 如果存在就根据target获取存储副作用函数的map
+    let depsMap = bucket.get(target)
+    // 如果depsMap不存在就新建一个
+    if(!depsMap){
+      depsMap = new Map()
+      bucket.set(target, depsMap)
+    }
+    // 如果说存在就根据key获取副作用函数的set
+    let deps = depsMap.get(key)
+    // 如果不存在就新建一个set
+    if(!deps){
+      deps = new Set()
+      depsMap.set(key, deps)
+    }
+    // 最后把副作用函数添加到set内
+    deps.add(activeEffect)
+  }
+  // 封装trigger函数
+  function trigger(target,key){
+    // 首先根据target获取weakMap中的map
+    const depsMap = bucket.get(target)
+    // 不存在的话return
+    if(!depsMap) return
+    // 存在的话根据key获取set中的对应的副作用函数
+    const deps = depsMap.get(key)
+    // 存在副作用函数的话就执行
+    if(deps){
+      deps.forEach(fn => {
+        fn()
+      })
+    }
+  }
+  // 创建一个代理对象
+  const obj = new Proxy(data, {
+    get(target,key){
+      console.log(`捕获到了get操作，key为${key}`)
+      // 首先调用track函数来收集副作用函数
+      track(target, key)
+      // 正常返回数据
+      return target[key]
+    },
+    set(target,key,newVal){
+      console.log(`捕获到了set操作，key为${key}，新值为${newVal}`)
+      // 首先设置新值
+      target[key] = newVal
+      // 调用trigger函数
+      trigger(target, key)
+    }
+  })
+  // 创建一个注册副作用函数的函数
+  function effect(fn){
+    // 将副作用函数赋值给全局变量
+    activeEffect = fn
+    // 执行副作用函数
+    fn()
+  }
+  // 创建一个更新视图的函数
+  effect(() => {
+    document.querySelector('.div1').innerHTML = obj.text
+  })
+  // 创建一个更新数据的函数
+  setTimeout(() => {
+    obj.text = 'hello world 2'
+  }, 1000)
+</script>
+</html>
